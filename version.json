@@ -1,6 +1,6 @@
 {
-  "latest": "20.12.2023-rc2",
-  "updateurl": "https://raw.githubusercontent.com/qrlk/wraith.lua/main/wraith.lua",
-  "changelog": "https://github.com/qrlk/wraith.lua/releases",
-  "telemetry": "http://qrlk.me/dev/moonloader/wraith.lua/stats.php"
+  "latest": "21.12.2023-dev1",
+  "updateurl": "https://raw.githubusercontent.com/qrlk/wraith-aimline/main/wraith-aimline.lua",
+  "changelog": "https://github.com/qrlk/wraith-aimline/releases",
+  "telemetry": "http://qrlk.me/dev/moonloader/wraith-aimline/stats.php"
 }
