@@ -59,16 +59,10 @@ local cfg =
             options = {
                 welcomeMessage = true,
                 debug = true,
-                debugNeedAimLines = true,
-                debugNeedAimLinesFull = true,
-                debugNeedAimLinesLOS = true,
                 debugNeed3dtext = true,
-                debugNeedAimLine = true,
-                debugNeedAimLineFull = true,
-                debugNeedAimLineLOS = true,
-                debugNeedToDrawAngles = false,
-                debugNeedToTweakAngles = false,
-                debugNeedToSaveAngles = false
+                debugNeedTracer = true,
+                debugNeedPhoneSmall = false,
+                debugNeedPhoneBig = true,
             }
         },
         "wraith-xiaomi"
@@ -83,8 +77,12 @@ saveCfg()
 --
 
 local debug3dText = {}
-
+local phonesObject = {}
+local PHONE_SLOT = 2
 local playersAimData = {}
+local DEBUG_3D_TEXT_DISTANCE = 10.0
+
+------- snippet start
 
 -- trying to ulitize aspectRatio property from aimSync
 
@@ -192,6 +190,7 @@ function getRealAspectRatioByWeirdValue(aspectRatio)
     return false, "unknown"
 end
 
+--- snippet end
 
 function checkWraith()
     local ffi = require "ffi"
@@ -223,6 +222,39 @@ function callMenu(id, pos, title)
     )
 end
 
+local phone_models = { 18866, 18874, 18872, 18871, 18867 }
+
+function addRandomObject(playerId, slotId, randomModels, bone, oX, oY, oZ, rX, rY, rZ, sX, sY, sZ)
+    local bs = raknetNewBitStream()
+    raknetBitStreamWriteInt16(bs, playerId)                                 -- playerId
+    raknetBitStreamWriteInt32(bs, slotId)                                   -- index
+    raknetBitStreamWriteBool(bs, true)                                      -- create
+    raknetBitStreamWriteInt32(bs, randomModels[math.random(#randomModels)]) -- modelId
+    raknetBitStreamWriteInt32(bs, bone)                                     -- bone
+    raknetBitStreamWriteFloat(bs, oX)                                       -- offset x
+    raknetBitStreamWriteFloat(bs, oY)                                       -- offset y
+    raknetBitStreamWriteFloat(bs, oZ)                                       -- offset z
+    raknetBitStreamWriteFloat(bs, rX)                                       -- rotation x
+    raknetBitStreamWriteFloat(bs, rY)                                       -- rotation y
+    raknetBitStreamWriteFloat(bs, rZ)                                       -- rotation z
+    raknetBitStreamWriteFloat(bs, sX)                                       -- scale x
+    raknetBitStreamWriteFloat(bs, sY)                                       -- scale y
+    raknetBitStreamWriteFloat(bs, sZ)                                       -- scale z
+    raknetBitStreamWriteInt32(bs, -1)                                       -- color1
+    raknetBitStreamWriteInt32(bs, -1)                                       -- color2
+    raknetEmulRpcReceiveBitStream(113, bs)
+    raknetDeleteBitStream(bs)
+end
+
+function delObject(playerId, slotId)
+    local bs = raknetNewBitStream()
+    raknetBitStreamWriteInt16(bs, playerId)
+    raknetBitStreamWriteInt32(bs, slotId)
+    raknetBitStreamWriteBool(bs, false)
+    raknetEmulRpcReceiveBitStream(113, bs)
+    raknetDeleteBitStream(bs)
+end
+
 function main()
     if not isSampfuncsLoaded() or not isSampLoaded() then
         return
@@ -238,7 +270,7 @@ function main()
     -- вырежи тут, если хочешь отключить проверку обновлений
 
     sampRegisterChatCommand(
-        "wraith-aimline",
+        "wraith-xiaomi",
         function()
             table.insert(tempThreads, lua_thread.create(callMenu))
         end
@@ -250,48 +282,91 @@ function main()
 
     if cfg.options.welcomeMessage then
         sampAddChatMessage(
-            "{348cb2}/wraith-aimline v" ..
-            thisScript().version .. " активирован! Меню: {FFFF00}/wraith-aimline{348cb2}. Автор: qrlk.",
+            "{348cb2}/wraith-xiaomi v" ..
+            thisScript().version .. " активирован! Меню: {FFFF00}/wraith-xiaomi{348cb2}. Автор: qrlk.",
             0x7ef3fa
         )
         sampAddChatMessage(
-            "{348cb2}Рендер линии прицела вырезан из {7ef3fa}wraith.lua -> {FFFF00}/checkwraith{348cb2}",
+            "{348cb2}Определение соотношения сторон вырезано из {7ef3fa}wraith.lua -> {FFFF00}/checkwraith{348cb2}",
             0x7ef3fa
         )
     end
+
     sampRegisterChatCommand("checkwraith", checkWraith)
+
+    function delDebug3dText(nick)
+        sampDestroy3dText(debug3dText[nick].sampTextId)
+        debug3dText[nick] = nil
+    end
 
     while true do
         wait(0)
 
-        if cfg.options.debug and (cfg.options.debugNeedAimLines or cfg.options.debugNeed3dtext) then
+        if cfg.options.debug and (cfg.options.debugNeedTracer or cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig or cfg.options.debugNeed3dtext) then
+            if (not cfg.options.debugNeedTracer) then
+                wait(2000)
+            end
+
             for nick, data in pairs(playersAimData) do
                 if sampIsPlayerConnected(data.playerId) then
                     local result, ped = sampGetCharHandleBySampPlayerId(data.playerId)
                     if result and sampGetPlayerNickname(data.playerId) == nick then
+                        if data.realAspect == "unknown" then
+                            if (cfg.option.debugNeedTracer) then
+                                local x, y, z = getCharCoordinates(playerPed)
+                                local mX, mY, mZ = getCharCoordinates(ped)
 
+                                drawDebugLine(x, y, z, mX, mY, mZ, 0xffFF00FF, 0xffFF00FF, 0xffFF00FF)
+                            end
 
-                        if cfg.options.debug and cfg.options.debugNeed3dtext and debug3dText[nick] == nil then
-                            local text =
-                                string.format("%s, %s, hit: %s", os.clock(), data.realAspect, data.realAspectHit)
-                            local sampTextId =
-                                sampCreate3dText(text, 0xFFFFFFFF, 0.0, 0.0, 0.02, 10.0, false, data.playerId, -1)
-                            debug3dText[nick] = sampTextId
+                            if cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig then
+                                if phonesObject[nick] ~= nil and phonesObject[nick].aspectRatio ~= data.aspectRatio then
+                                    delObject(data.playerId, PHONE_SLOT)
+                                end
+
+                                if phonesObject[nick] == nil then
+                                    if cfg.options.debugNeedPhoneSmall then
+                                        addRandomObject(1, 2, phone_models, 2, 0, 0, -0.05, -90, 0, -90, 2, 2, 3)
+                                        phonesObject[nick] = true
+                                    elseif cfg.options.debugNeedPhoneBig then
+                                        addRandomObject(1, 2, phone_models, 1, 0, -0.4, -0.25, -90, 0, -90, 10, 10, 20)
+                                        phonesObject[nick] = true
+                                    end
+                                end
+                            end
+
+                            if cfg.options.debugNeed3dtext then
+                                if debug3dText[nick] ~= nil and debug3dText[nick].aspectRatio ~= data.aspectRatio then
+                                    delDebug3dText(nick)
+                                end
+
+                                if debug3dText[nick] == nil then
+                                    local text = string.format("%s, accurate: %s || %sс", data.realAspect,
+                                        data.realAspectHit, math.floor(os.clock()))
+                                    debug3dText[nick] = {
+                                        aspectRatio = data.aspectRatio,
+                                        sampTextId = sampCreate3dText(text, 0xFFFFFFFF, 0.0, 0.0, 0.02,
+                                            DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
+                                    }
+                                end
+                            end
                         end
-
-
                     else
                         playersAimData[nick] = nil
+                        if phonesObject[nick] ~= nil then
+                            phonesObject[nick] = nil
+                        end
                         if debug3dText[nick] ~= nil then
-                            sampDestroy3dText(debug3dText[nick])
-                            debug3dText[nick] = nil
+                            delDebug3dText(nick)
                         end
                     end
                 else
                     playersAimData[nick] = nil
+                    if phonesObject[nick] ~= nil then
+                        phonesObject[nick] = nil
+                    end
                     if debug3dText[nick] ~= nil then
-                        sampDestroy3dText(debug3dText[nick])
-                        debug3dText[nick] = nil
+                        delDebug3dText(nick)
                     end
                 end
             end
@@ -321,8 +396,18 @@ function sampev.onAimSync(playerId, data)
                 realAspect = realAspect,
             }
 
-            if cfg.options.debug and (cfg.options.debugNeedAimLines or cfg.options.debugNeed3dtext) then
+            if cfg.options.debug and (cfg.options.debugNeed3dtext) then
                 playersAimData[nick] = playerAimData
+            end
+        end
+    end
+end
+
+function sampev.onPlayerStreamOut(playerId)
+    if phonesObject[playerId] ~= nil then
+        if sampIsPlayerConnected(data.playerId) then
+            if sampGetPlayerNickname(data.playerId) == nick then
+                phonesObject[playerId] = nil
             end
         end
     end
@@ -364,60 +449,22 @@ function updateMenu()
             onclick = function()
                 sampShowDialog(
                     0,
-                    "{7ef3fa}/wraith-aimline v." .. thisScript().version,
-                    "{ffffff}Рендер приблизительной линии прицела игроков.\n\n1. Перехватывает синхронизацию камеры.\n2. Пытается воспроизвести линию прицела.\n3. Работает на основе значения aspectRatio в aimSync.\n4. Для снайперской винтовки, рифлы, м4 и ак47 отдельные углы.",
+                    "{7ef3fa}/wraith-xiaomi v." .. thisScript().version,
+                    "{ffffff}.",
                     "Окей"
                 )
             end
         },
         {
-            title = "Открыть скрипт, из которого был вырезан рендер",
+            title = "Открыть скрипт, из которого было вырезана эта функция.",
             onclick = checkWraith
         },
         {
             title = " "
         },
+
         createSimpleToggle("options", "debug", "Скрипт работает: "),
-        {
-            title = "Настройки",
-            submenu = {
-                createSimpleToggle("options", "debugNeed3dtext", "Отображать 3д текст с соотношением сторон: "),
-                {
-                    title = " "
-                },
-                {
-                    title = "{AAAAAA}Рендеры всех игроков"
-                },
-                createSimpleToggle("options", "debugNeedAimLines", "Общий тогл: "),
-                createSimpleToggle("options", "debugNeedAimLinesFull", "Показывать полную линию: "),
-                createSimpleToggle("options", "debugNeedAimLinesLOS", "Показывать до столкновения: "),
-                {
-                    title = " "
-                },
-                {
-                    title = "{AAAAAA}Рендер линии вашего персонажа"
-                },
-                createSimpleToggle("options", "debugNeedAimLine", "Общий тогл: "),
-                createSimpleToggle("options", "debugNeedAimLineFull", "Показывать полную линию: "),
-                createSimpleToggle("options", "debugNeedAimLineLOS", "Показывать до столкновения: "),
-                {
-                    title = " "
-                },
-                {
-                    title = "{AAAAAA}Дебаг дебага (не трогать)"
-                },
-                createSimpleToggle("options", "debugNeedToDrawAngles", "Рендерить текущий угол: "),
-                createSimpleToggle("options", "debugNeedToTweakAngles", "Менять углы (alt+стрелки): "),
-                createSimpleToggle("options", "debugNeedToSaveAngles", "Сохранять измененные углы: "),
-                {
-                    title = " "
-                },
-                {
-                    title = "{AAAAAA}Разное"
-                },
-                createSimpleToggle("options", "welcomeMessage", "Показывать вступительное сообщение: ")
-            }
-        }
+
     }
 end
 
