@@ -1,6 +1,6 @@
 {
   "latest": "21.12.2023-dev1",
-  "updateurl": "https://raw.githubusercontent.com/qrlk/wraith-aimline/main/wraith-aimline.lua",
-  "changelog": "https://github.com/qrlk/wraith-aimline/releases",
-  "telemetry": "http://qrlk.me/dev/moonloader/wraith-aimline/stats.php"
+  "updateurl": "https://raw.githubusercontent.com/qrlk/wraith-xiaomi/main/wraith-xiaomi.lua",
+  "changelog": "https://github.com/qrlk/wraith-xiaomi/releases",
+  "telemetry": "http://qrlk.me/dev/moonloader/wraith-xiaomi/stats.php"
 }
