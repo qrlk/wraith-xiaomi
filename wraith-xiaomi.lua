@@ -2,7 +2,8 @@ require "lib.moonloader"
 
 script_name("wraith-xiaomi")
 script_author("qrlk")
-script_description("aimline render cut from https://github.com/qrlk/wraith.lua")
+script_description(
+    "POC of new aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
 -- made for https://www.blast.hk/threads/193650/
 script_url("https://github.com/qrlk/wraith-xiaomi")
 script_version("21.12.2023-dev1")
@@ -77,7 +78,7 @@ saveCfg()
 --
 
 local debug3dText = {}
-local phonesObject = {}
+local phoneObjects = {}
 local PHONE_SLOT = 2
 local playersAimData = {}
 local DEBUG_3D_TEXT_DISTANCE = 10.0
@@ -299,6 +300,8 @@ function main()
         debug3dText[nick] = nil
     end
 
+    local lastChecked = os.clock()
+
     while true do
         wait(0)
 
@@ -312,49 +315,54 @@ function main()
                     local result, ped = sampGetCharHandleBySampPlayerId(data.playerId)
                     if result and sampGetPlayerNickname(data.playerId) == nick then
                         if data.realAspect == "unknown" then
-                            if (cfg.option.debugNeedTracer) then
+                            if (cfg.options.debugNeedTracer) then
                                 local x, y, z = getCharCoordinates(playerPed)
                                 local mX, mY, mZ = getCharCoordinates(ped)
 
                                 drawDebugLine(x, y, z, mX, mY, mZ, 0xffFF00FF, 0xffFF00FF, 0xffFF00FF)
                             end
 
-                            if cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig then
-                                if phonesObject[nick] ~= nil and phonesObject[nick].aspectRatio ~= data.aspectRatio then
-                                    delObject(data.playerId, PHONE_SLOT)
+                            if os.clock() - 5 > lastChecked then
+                                if cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig then
+                                    if phoneObjects[nick] ~= nil and phoneObjects[nick].aspectRatio ~= data.aspectRatio then
+                                        delObject(data.playerId, PHONE_SLOT)
+                                    end
+
+                                    if phoneObjects[nick] == nil then
+                                        if cfg.options.debugNeedPhoneSmall then
+                                            addRandomObject(1, 2, phone_models, 2, 0, 0, -0.05, -90, 0, -90, 2, 2, 3)
+                                            phoneObjects[nick] = true
+                                        elseif cfg.options.debugNeedPhoneBig then
+                                            addRandomObject(1, 2, phone_models, 1, 0, -0.4, -0.25, -90, 0, -90, 10, 10,
+                                                20)
+                                            phoneObjects[nick] = true
+                                        end
+                                    end
                                 end
 
-                                if phonesObject[nick] == nil then
-                                    if cfg.options.debugNeedPhoneSmall then
-                                        addRandomObject(1, 2, phone_models, 2, 0, 0, -0.05, -90, 0, -90, 2, 2, 3)
-                                        phonesObject[nick] = true
-                                    elseif cfg.options.debugNeedPhoneBig then
-                                        addRandomObject(1, 2, phone_models, 1, 0, -0.4, -0.25, -90, 0, -90, 10, 10, 20)
-                                        phonesObject[nick] = true
+                                if cfg.options.debugNeed3dtext then
+                                    if debug3dText[nick] ~= nil and debug3dText[nick].aspectRatio ~= data.aspectRatio then
+                                        delDebug3dText(nick)
+                                    end
+
+                                    if debug3dText[nick] == nil then
+                                        local text = string.format("%s, accurate: %s || %sс", data.realAspect,
+                                            data.realAspectHit, math.floor(os.clock()))
+                                        debug3dText[nick] = {
+                                            aspectRatio = data.aspectRatio,
+                                            sampTextId = sampCreate3dText(text, 0xFFFFFFFF, 0.0, 0.0, 0.02,
+                                                DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
+                                        }
                                     end
                                 end
                             end
 
-                            if cfg.options.debugNeed3dtext then
-                                if debug3dText[nick] ~= nil and debug3dText[nick].aspectRatio ~= data.aspectRatio then
-                                    delDebug3dText(nick)
-                                end
-
-                                if debug3dText[nick] == nil then
-                                    local text = string.format("%s, accurate: %s || %sс", data.realAspect,
-                                        data.realAspectHit, math.floor(os.clock()))
-                                    debug3dText[nick] = {
-                                        aspectRatio = data.aspectRatio,
-                                        sampTextId = sampCreate3dText(text, 0xFFFFFFFF, 0.0, 0.0, 0.02,
-                                            DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
-                                    }
-                                end
-                            end
+                            lastChecked = os.clock()
                         end
                     else
                         playersAimData[nick] = nil
-                        if phonesObject[nick] ~= nil then
-                            phonesObject[nick] = nil
+                        if phoneObjects[nick] ~= nil then
+                            phoneObjects[nick] = nil
                         end
                         if debug3dText[nick] ~= nil then
                             delDebug3dText(nick)
@@ -362,8 +370,8 @@ function main()
                     end
                 else
                     playersAimData[nick] = nil
-                    if phonesObject[nick] ~= nil then
-                        phonesObject[nick] = nil
+                    if phoneObjects[nick] ~= nil then
+                        phoneObjects[nick] = nil
                     end
                     if debug3dText[nick] ~= nil then
                         delDebug3dText(nick)
@@ -384,7 +392,7 @@ end
 -- sampev
 function sampev.onAimSync(playerId, data)
     if sampIsPlayerConnected(playerId) then
-        local res, char = sampGetCharHandleBySampPlayerId(playerId)
+        local res = sampGetCharHandleBySampPlayerId(playerId)
         if res then
             local nick = sampGetPlayerNickname(playerId)
             local hit, realAspect = getRealAspectRatioByWeirdValue(data.aspectRatio)
@@ -404,10 +412,10 @@ function sampev.onAimSync(playerId, data)
 end
 
 function sampev.onPlayerStreamOut(playerId)
-    if phonesObject[playerId] ~= nil then
+    if phoneObjects[playerId] ~= nil then
         if sampIsPlayerConnected(data.playerId) then
             if sampGetPlayerNickname(data.playerId) == nick then
-                phonesObject[playerId] = nil
+                phoneObjects[playerId] = nil
             end
         end
     end
@@ -425,6 +433,9 @@ end
 
 -- cleanup
 function onScriptTerminate(LuaScript, quitGame)
+    for k, v in pairs(phoneObjects) do
+        delObject(k, PHONE_SLOT)
+    end
     for k, v in pairs(debug3dText) do
         sampDestroy3dText(v)
     end
@@ -438,6 +449,7 @@ function createSimpleToggle(group, setting, text)
         onclick = function()
             cfg[group][setting] = not cfg[group][setting]
             saveCfg()
+            thisScript():reload()
         end
     }
 end
@@ -456,15 +468,20 @@ function updateMenu()
             end
         },
         {
-            title = "Открыть скрипт, из которого было вырезана эта функция.",
+            title = "Открыть скрипт, из которого была вырезана эта функция.",
             onclick = checkWraith
         },
         {
             title = " "
         },
-
+        {
+            title = '{AAAAAA}Настройки'
+        },
         createSimpleToggle("options", "debug", "Скрипт работает: "),
-
+        createSimpleToggle("options", "debugNeedTracer", "Трасер до мобильных игроков: "),
+        createSimpleToggle("options", "debugNeedPhoneSmall", "Добавлять телефон мобильным игрокам вместо башки: "),
+        createSimpleToggle("options", "debugNeedPhoneBig", "Добавлять телефон мобильным игрокам на тело: "),
+        createSimpleToggle("options", "debugNeed3dtext", "Включить 3д текст с соотношением сторон: "),
     }
 end
 
