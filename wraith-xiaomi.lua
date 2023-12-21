@@ -3,7 +3,7 @@ require "lib.moonloader"
 script_name("wraith-xiaomi")
 script_author("qrlk")
 script_description(
-    "POC of new aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
+"POC of aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
 -- made for https://www.blast.hk/threads/193650/
 script_url("https://github.com/qrlk/wraith-xiaomi")
 script_version("21.12.2023-dev1")
@@ -64,6 +64,8 @@ local cfg =
                 debugNeedTracer = true,
                 debugNeedPhoneSmall = false,
                 debugNeedPhoneBig = true,
+                debug3dTextOnlyMobile = true,
+                debug3DTextMore = false,
             }
         },
         "wraith-xiaomi"
@@ -79,10 +81,11 @@ saveCfg()
 
 local debug3dText = {}
 local phoneObjects = {}
-local PHONE_SLOT = 2
+local OBJECT_SLOT_REPLACE_IFNEEDED = 2
 local playersAimData = {}
 local DEBUG_3D_TEXT_DISTANCE = 10.0
 
+-- будет опубликован когда я буду уверен, что он работает стабильно
 ------- snippet start
 
 -- trying to ulitize aspectRatio property from aimSync
@@ -213,7 +216,7 @@ function callMenu(id, pos, title)
     updateMenu()
     submenus_show(
         mod_submenus_sa,
-        "{348cb2}/wraith-aimline v." .. thisScript().version,
+        "{348cb2}/wraith-xiaomi v." .. thisScript().version,
         "Выбрать",
         "Закрыть",
         "Назад",
@@ -288,7 +291,7 @@ function main()
             0x7ef3fa
         )
         sampAddChatMessage(
-            "{348cb2}Определение соотношения сторон вырезано из {7ef3fa}wraith.lua -> {FFFF00}/checkwraith{348cb2}",
+            "{348cb2}Определение aspectRatio вырезано из {7ef3fa}wraith.lua -> {FFFF00}/checkwraith{348cb2}",
             0x7ef3fa
         )
     end
@@ -321,47 +324,67 @@ function main()
 
                                 drawDebugLine(x, y, z, mX, mY, mZ, 0xffFF00FF, 0xffFF00FF, 0xffFF00FF)
                             end
+                        end
 
-                            if os.clock() - 5 > lastChecked then
-                                if cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig then
-                                    if phoneObjects[nick] ~= nil and phoneObjects[nick].aspectRatio ~= data.aspectRatio then
-                                        delObject(data.playerId, PHONE_SLOT)
-                                    end
-
-                                    if phoneObjects[nick] == nil then
-                                        if cfg.options.debugNeedPhoneSmall then
-                                            addRandomObject(1, 2, phone_models, 2, 0, 0, -0.05, -90, 0, -90, 2, 2, 3)
-                                            phoneObjects[nick] = true
-                                        elseif cfg.options.debugNeedPhoneBig then
-                                            addRandomObject(1, 2, phone_models, 1, 0, -0.4, -0.25, -90, 0, -90, 10, 10,
-                                                20)
-                                            phoneObjects[nick] = true
-                                        end
-                                    end
+                        if os.clock() - 2 > lastChecked then
+                            if cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig then
+                                if phoneObjects[nick] ~= nil and phoneObjects[nick].aspectRatio ~= data.aspectRatio then
+                                    delObject(data.playerId, OBJECT_SLOT_REPLACE_IFNEEDED)
                                 end
 
-                                if cfg.options.debugNeed3dtext then
-                                    if debug3dText[nick] ~= nil and debug3dText[nick].aspectRatio ~= data.aspectRatio then
-                                        delDebug3dText(nick)
+                                if data.realAspect == "unknown" and phoneObjects[nick] == nil then
+                                    if cfg.options.debugNeedPhoneSmall then
+                                        addRandomObject(data.playerId, 2, phone_models, 2, 0, 0, -0.05, -90, 0, -90, 2, 2,
+                                            3)
+                                    elseif cfg.options.debugNeedPhoneBig then
+                                        addRandomObject(data.playerId, 2, phone_models, 1, 0, -0.4, -0.25, -90, 0, -90,
+                                            10, 10, 20)
                                     end
 
-                                    if debug3dText[nick] == nil then
-                                        local text = string.format("%s, accurate: %s || %sс", data.realAspect,
-                                            data.realAspectHit, math.floor(os.clock()))
+                                    phoneObjects[nick] = { aspectRatio = data.aspectRatio }
+                                end
+                            end
+
+                            if cfg.options.debugNeed3dtext then
+                                if debug3dText[nick] ~= nil and (debug3dText[nick].aspectRatio ~= data.aspectRatio or (os.clock() - 10 > debug3dText[nick].time)) then
+                                    delDebug3dText(nick)
+                                end
+
+                                if debug3dText[nick] == nil then
+                                    if cfg.options.debug3dTextOnlyMobile and data.realAspect == "unknown" then
                                         debug3dText[nick] = {
                                             aspectRatio = data.aspectRatio,
+                                            time = os.clock(),
+                                            sampTextId = sampCreate3dText('mobile?', 0xFFFFFFFF, 0.0, 0.0, 0.02,
+                                                DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
+                                        }
+                                    else
+                                        local text = ""
+
+                                        if cfg.options.debug3DTextMore then
+                                            text = string.format("%s || %s || acc: %s || upd: %sс", data.realAspect,
+                                                data.aspectRatio,
+                                                data.realAspectHit, os.date("%H:%M:%S", os.time()))
+                                        else
+                                            text = data.realAspect == "unknown" and "mobile?" or data.realAspect
+                                        end
+
+
+                                        debug3dText[nick] = {
+                                            aspectRatio = data.aspectRatio,
+                                            time = os.clock(),
                                             sampTextId = sampCreate3dText(text, 0xFFFFFFFF, 0.0, 0.0, 0.02,
                                                 DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
                                         }
                                     end
                                 end
                             end
-
                             lastChecked = os.clock()
                         end
                     else
                         playersAimData[nick] = nil
                         if phoneObjects[nick] ~= nil then
+                            delObject(data.playerId, OBJECT_SLOT_REPLACE_IFNEEDED)
                             phoneObjects[nick] = nil
                         end
                         if debug3dText[nick] ~= nil then
@@ -371,6 +394,7 @@ function main()
                 else
                     playersAimData[nick] = nil
                     if phoneObjects[nick] ~= nil then
+                        delObject(data.playerId, OBJECT_SLOT_REPLACE_IFNEEDED)
                         phoneObjects[nick] = nil
                     end
                     if debug3dText[nick] ~= nil then
@@ -434,7 +458,7 @@ end
 -- cleanup
 function onScriptTerminate(LuaScript, quitGame)
     for k, v in pairs(phoneObjects) do
-        delObject(k, PHONE_SLOT)
+        delObject(k, OBJECT_SLOT_REPLACE_IFNEEDED)
     end
     for k, v in pairs(debug3dText) do
         sampDestroy3dText(v)
@@ -462,26 +486,37 @@ function updateMenu()
                 sampShowDialog(
                     0,
                     "{7ef3fa}/wraith-xiaomi v." .. thisScript().version,
-                    "{ffffff}.",
+                    "{ffffff}Proof-Of-Concept определения приблизительного соотношения сторон через aimSync.\n\nОпределяет необычные соотношения как мобильных игроков и рисует им телефон.",
                     "Окей"
                 )
             end
         },
         {
-            title = "Открыть скрипт, из которого была вырезана эта функция.",
+            title = "Открыть скрипт, из которого была вырезана эта функция",
             onclick = checkWraith
         },
         {
             title = " "
         },
-        {
-            title = '{AAAAAA}Настройки'
-        },
         createSimpleToggle("options", "debug", "Скрипт работает: "),
         createSimpleToggle("options", "debugNeedTracer", "Трасер до мобильных игроков: "),
-        createSimpleToggle("options", "debugNeedPhoneSmall", "Добавлять телефон мобильным игрокам вместо башки: "),
-        createSimpleToggle("options", "debugNeedPhoneBig", "Добавлять телефон мобильным игрокам на тело: "),
-        createSimpleToggle("options", "debugNeed3dtext", "Включить 3д текст с соотношением сторон: "),
+        {
+            title = " "
+        },
+        {
+            title = '{AAAAAA}Объект'
+        },
+        createSimpleToggle("options", "debugNeedPhoneSmall", "Добавлять телефон ~мобильным игрокам вместо башки: "),
+        createSimpleToggle("options", "debugNeedPhoneBig", "Добавлять телефон ~мобильным игрокам на тело: "),
+        {
+            title = " "
+        },
+        {
+            title = '{AAAAAA}3D текст'
+        },
+        createSimpleToggle("options", "debugNeed3dtext", "Включить 3д текст: "),
+        createSimpleToggle("options", "debug3dTextOnlyMobile", "Только добавлять ~игрокам с телефонов: "),
+        createSimpleToggle("options", "debug3DTextMore", "Более подробно в 3д текст: ")
     }
 end
 
@@ -524,6 +559,7 @@ function submenus_show(menu, caption, select_button, close_button, back_button, 
             if start then
                 result, button, list = true, 1, start - 1
             end
+            wait(200)
             if result then
                 if button == 1 and list ~= -1 then
                     local item = menu[list + 1]
