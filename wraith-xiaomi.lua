@@ -3,7 +3,7 @@ require "lib.moonloader"
 script_name("wraith-xiaomi")
 script_author("qrlk")
 script_description(
-"POC of aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
+    "POC of aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
 -- made for https://www.blast.hk/threads/193650/
 script_url("https://github.com/qrlk/wraith-xiaomi")
 script_version("21.12.2023-dev1")
@@ -62,6 +62,7 @@ local cfg =
                 debug = true,
                 debugNeed3dtext = true,
                 debugNeedTracer = true,
+                debugNeedRender = false,
                 debugNeedPhoneSmall = false,
                 debugNeedPhoneBig = true,
                 debug3dTextOnlyMobile = true,
@@ -81,9 +82,17 @@ saveCfg()
 
 local debug3dText = {}
 local phoneObjects = {}
-local OBJECT_SLOT_REPLACE_IFNEEDED = 2
 local playersAimData = {}
-local DEBUG_3D_TEXT_DISTANCE = 10.0
+local playerPedAimData = false
+local CHECK_NICK = false
+local DEBUG_3D_TEXT_DISTANCE = 12.5
+local requestToReload = false
+
+local OBJECT_SLOT_REPLACE_IFNEEDED = 2
+local MOBILE_ASPECT = "unknown"
+
+local font_flag = require('moonloader').font_flag
+local my_font = renderCreateFont('Verdana', 12, font_flag.BOLD + font_flag.SHADOW)
 
 -- будет опубликован когда я буду уверен, что он работает стабильно
 ------- snippet start
@@ -196,6 +205,33 @@ end
 
 --- snippet end
 
+function getClosestAspectRatio(targetWidth, targetHeight)
+    -- List of common aspect ratios
+    local aspectRatios = {
+        { 4,  3 },  -- Standard definition (SD)
+        { 16, 9 },  -- High definition (HD)
+        { 16, 10 }, -- Widescreen
+        { 5,  4 },  -- Traditional computer monitor
+        { 5,  3 },  -- Traditional computer monitor
+        { 3,  2 },  -- Classic film camera
+        { 43, 18 }, -- Classic film camera
+        { 25, 16 }, -- Classic film camera
+    }
+
+    local closestAspectRatio = aspectRatios[1]
+    local closestDifference = math.abs(targetWidth / targetHeight - closestAspectRatio[1] / closestAspectRatio[2])
+
+    for _, aspectRatio in ipairs(aspectRatios) do
+        local difference = math.abs(targetWidth / targetHeight - aspectRatio[1] / aspectRatio[2])
+        if difference < closestDifference then
+            closestAspectRatio = aspectRatio
+            closestDifference = difference
+        end
+    end
+
+    return closestAspectRatio[1], closestAspectRatio[2]
+end
+
 function checkWraith()
     local ffi = require "ffi"
     ffi.cdef [[
@@ -259,6 +295,11 @@ function delObject(playerId, slotId)
     raknetDeleteBitStream(bs)
 end
 
+function delDebug3dText(nick)
+    sampDestroy3dText(debug3dText[nick].sampTextId)
+    debug3dText[nick] = nil
+end
+
 function main()
     if not isSampfuncsLoaded() or not isSampLoaded() then
         return
@@ -298,47 +339,111 @@ function main()
 
     sampRegisterChatCommand("checkwraith", checkWraith)
 
-    function delDebug3dText(nick)
-        sampDestroy3dText(debug3dText[nick].sampTextId)
-        debug3dText[nick] = nil
+    local lastChecked = os.clock()
+    local needToCheck = true
+
+    function selectPlayerForDebugRender(id)
+        if id == "" then
+            CHECK_NICK = false
+        else
+            if sampIsPlayerConnected(id) then
+                CHECK_NICK = sampGetPlayerNickname(id)
+            end
+        end
     end
 
-    local lastChecked = os.clock()
+    sampRegisterChatCommand("wr", selectPlayerForDebugRender)
 
     while true do
         wait(0)
-
         if cfg.options.debug and (cfg.options.debugNeedTracer or cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig or cfg.options.debugNeed3dtext) then
-            if (not cfg.options.debugNeedTracer) then
+            if (not cfg.options.debugNeedTracer or not cfg.options.debugNeedRender) then
                 wait(2000)
+            end
+
+            if cfg.options.debugNeedRender and (playerPedAimData or CHECK_NICK) then
+                if CHECK_NICK then
+                    if playersAimData[CHECK_NICK] then
+                        local n1 = '?'
+
+                        if playersAimData[CHECK_NICK].realAspect ~= "unknown" then
+                            local p1, p2 = playersAimData[CHECK_NICK].realAspect:match("(%d+):(%d+)")
+                            n1 = string.format("%.2f", p1 / p2)
+                        end
+
+                        renderFontDrawText(my_font,
+                            string.format(
+                                'NICK: %s[%s] - /wr [id]\nAIMSYNC: %s (%s / 255 = ~%.2f)\nPREDICTED: %s (%s) || HIT: %s',
+                                CHECK_NICK,
+                                sampGetPlayerIdByNickname(CHECK_NICK),
+                                playersAimData[CHECK_NICK].aspectRatio,
+                                playersAimData[CHECK_NICK].aspectRatio,
+                                playersAimData[CHECK_NICK].aspectRatio / 255,
+                                playersAimData[CHECK_NICK].realAspect,
+                                n1,
+                                playersAimData[CHECK_NICK].realAspectHit), 50, 400, 0xFFFFFFFF)
+                    else
+                        CHECK_NICK = false
+                    end
+                else
+                    local resX, resY = getScreenResolution()
+                    local c1, c2 = getClosestAspectRatio(resX, resY)
+
+                    local n1 = '?'
+
+                    if playerPedAimData.realAspect ~= "unknown" then
+                        local p1, p2 = playerPedAimData.realAspect:match("(%d+):(%d+)")
+                        n1 = string.format("%.2f", p1 / p2)
+                    end
+
+                    local n2 = c1 / c2
+
+                    renderFontDrawText(my_font,
+                        string.format(
+                            'W: %s || H: %s || REAL: %.2f\nAIMSYNC: %s (%s / 255 = ~%.2f)\nPREDICTED: %s (%s) || CLOSEST: %s:%s (%.2f) || HIT: %s',
+                            resX,
+                            resY,
+                            resX / resY,
+                            playerPedAimData.aspectRatio,
+                            playerPedAimData.aspectRatio,
+                            playerPedAimData.aspectRatio / 255,
+                            playerPedAimData.realAspect,
+                            n1,
+                            c1, c2, n2,
+                            playerPedAimData.realAspectHit), 50, 400, 0xFFFFFFFF)
+                end
+            end
+
+            if os.clock() - 1 > lastChecked then
+                needToCheck = true
             end
 
             for nick, data in pairs(playersAimData) do
                 if sampIsPlayerConnected(data.playerId) then
                     local result, ped = sampGetCharHandleBySampPlayerId(data.playerId)
                     if result and sampGetPlayerNickname(data.playerId) == nick then
-                        if data.realAspect == "unknown" then
+                        if data.realAspect == MOBILE_ASPECT then
                             if (cfg.options.debugNeedTracer) then
                                 local x, y, z = getCharCoordinates(playerPed)
                                 local mX, mY, mZ = getCharCoordinates(ped)
 
-                                drawDebugLine(x, y, z, mX, mY, mZ, 0xffFF00FF, 0xffFF00FF, 0xffFF00FF)
+                                drawDebugLine(x, y, z, mX, mY, mZ, 0xff6900C6, 0xff6900C6, 0xff6900C6)
                             end
                         end
 
-                        if os.clock() - 2 > lastChecked then
+                        if needToCheck then
                             if cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig then
                                 if phoneObjects[nick] ~= nil and phoneObjects[nick].aspectRatio ~= data.aspectRatio then
                                     delObject(data.playerId, OBJECT_SLOT_REPLACE_IFNEEDED)
                                 end
 
-                                if data.realAspect == "unknown" and phoneObjects[nick] == nil then
-                                    if cfg.options.debugNeedPhoneSmall then
-                                        addRandomObject(data.playerId, 2, phone_models, 2, 0, 0, -0.05, -90, 0, -90, 2, 2,
-                                            3)
-                                    elseif cfg.options.debugNeedPhoneBig then
+                                if data.realAspect == MOBILE_ASPECT and phoneObjects[nick] == nil then
+                                    if cfg.options.debugNeedPhoneBig then
                                         addRandomObject(data.playerId, 2, phone_models, 1, 0, -0.4, -0.25, -90, 0, -90,
                                             10, 10, 20)
+                                    elseif cfg.options.debugNeedPhoneSmall then
+                                        addRandomObject(data.playerId, 2, phone_models, 2, 0, 0, -0.05, -90, 0, -90, 2, 2,
+                                            3)
                                     end
 
                                     phoneObjects[nick] = { aspectRatio = data.aspectRatio }
@@ -346,12 +451,12 @@ function main()
                             end
 
                             if cfg.options.debugNeed3dtext then
-                                if debug3dText[nick] ~= nil and (debug3dText[nick].aspectRatio ~= data.aspectRatio or (os.clock() - 10 > debug3dText[nick].time)) then
+                                if debug3dText[nick] ~= nil and (debug3dText[nick].clock ~= data.clock or (os.clock() - 1 > debug3dText[nick].time)) then
                                     delDebug3dText(nick)
                                 end
 
                                 if debug3dText[nick] == nil then
-                                    if cfg.options.debug3dTextOnlyMobile and data.realAspect == "unknown" then
+                                    if not cfg.options.debug3DTextMore and cfg.options.debug3dTextOnlyMobile and data.realAspect == MOBILE_ASPECT then
                                         debug3dText[nick] = {
                                             aspectRatio = data.aspectRatio,
                                             time = os.clock(),
@@ -359,32 +464,34 @@ function main()
                                                 DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
                                         }
                                     else
-                                        local text = ""
+                                        if data.realAspect == MOBILE_ASPECT or not cfg.options.debug3dTextOnlyMobile then
+                                            local text = ""
 
-                                        if cfg.options.debug3DTextMore then
-                                            text = string.format("%s || %s || acc: %s || upd: %sс", data.realAspect,
-                                                data.aspectRatio,
-                                                data.realAspectHit, os.date("%H:%M:%S", os.time()))
-                                        else
-                                            text = data.realAspect == "unknown" and "mobile?" or data.realAspect
+                                            if cfg.options.debug3DTextMore then
+                                                text = string.format("%s || %s || hit: %s || age: %.2fс",
+                                                    data.realAspect,
+                                                    data.aspectRatio,
+                                                    data.realAspectHit,
+                                                    os.clock() - data.clock)
+                                            else
+                                                text = data.realAspect == MOBILE_ASPECT and "mobile?" or data.realAspect
+                                            end
+
+
+                                            debug3dText[nick] = {
+                                                aspectRatio = data.aspectRatio,
+                                                time = os.clock(),
+                                                sampTextId = sampCreate3dText(text, 0xFFFFFFFF, 0.0, 0.0, 0.02,
+                                                    DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
+                                            }
                                         end
-
-
-                                        debug3dText[nick] = {
-                                            aspectRatio = data.aspectRatio,
-                                            time = os.clock(),
-                                            sampTextId = sampCreate3dText(text, 0xFFFFFFFF, 0.0, 0.0, 0.02,
-                                                DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
-                                        }
                                     end
                                 end
                             end
-                            lastChecked = os.clock()
                         end
                     else
                         playersAimData[nick] = nil
                         if phoneObjects[nick] ~= nil then
-                            delObject(data.playerId, OBJECT_SLOT_REPLACE_IFNEEDED)
                             phoneObjects[nick] = nil
                         end
                         if debug3dText[nick] ~= nil then
@@ -394,13 +501,22 @@ function main()
                 else
                     playersAimData[nick] = nil
                     if phoneObjects[nick] ~= nil then
-                        delObject(data.playerId, OBJECT_SLOT_REPLACE_IFNEEDED)
                         phoneObjects[nick] = nil
                     end
                     if debug3dText[nick] ~= nil then
                         delDebug3dText(nick)
                     end
                 end
+            end
+
+            if needToCheck then
+                lastChecked = os.clock()
+                needToCheck = false
+            end
+
+            if requestToReload then
+                cleanup()
+                thisScript():reload()
             end
         end
     end
@@ -413,34 +529,88 @@ function main()
     end
 end
 
+function onReceivePacket(id, bitStream)
+    -- Parameters: UINT8 Packet_ID, UINT8 cam_mode, float cam_front_vec_x, float cam_front_vec_y, float cam_front_vec_z, float cam_pos_x, float cam_pos_y, float cam_pos_z, float aim_z, 2_BITS weapon_state, 6_BITS cam_zoom, UINT8 aspect_ratio
+    -- if id == 203 then
+    --     print('----')
+
+    --     print('cam_mode', raknetBitStreamReadInt8(bitStream))
+    --     print('cam_mode', raknetBitStreamReadInt8(bitStream))
+    --     print('cam_mode', raknetBitStreamReadInt8(bitStream))
+    --     print('cam_mode', raknetBitStreamReadInt8(bitStream))
+    --     print('cam_front_vec_x',  raknetBitStreamReadFloat(bitStream))
+    --     print('cam_front_vec_y',  raknetBitStreamReadFloat(bitStream))
+    --     print('cam_front_vec_z',  raknetBitStreamReadFloat(bitStream))
+    --     print('cam_pos_x',  raknetBitStreamReadFloat(bitStream))
+    --     print('cam_pos_y',  raknetBitStreamReadFloat(bitStream))
+    --     print('cam_pos_z',  raknetBitStreamReadFloat(bitStream))
+    --     print('aim_z',  raknetBitStreamReadFloat(bitStream))
+    --     print(raknetBitStreamReadInt8(bitStream))
+    --     print(raknetBitStreamReadInt8(bitStream))
+    --     print('unread', raknetBitStreamGetNumberOfUnreadBits(bitStream))
+    --     print('----')
+    -- end
+end
+
 -- sampev
 function sampev.onAimSync(playerId, data)
-    if sampIsPlayerConnected(playerId) then
-        local res = sampGetCharHandleBySampPlayerId(playerId)
-        if res then
-            local nick = sampGetPlayerNickname(playerId)
-            local hit, realAspect = getRealAspectRatioByWeirdValue(data.aspectRatio)
+    -- print('sampev++++++++++++++++++')
+    -- print('cam_mode', data.camMode)
+    -- print('cam_front_vec_x',  data.camFront.x)
+    -- print('cam_front_vec_y',  data.camFront.y)
+    -- print('cam_front_vec_z', data.camFront.z)
+    -- print('cam_pos_x',  data.camPos.x)
+    -- print('cam_pos_y',  data.camPos.y)
+    -- print('cam_pos_z',  data.camPos.z)
+    -- print('aim_z',  data.aimZ)
+    -- print('camExtZoom', data.camExtZoom)
+    -- print('camExtZoom', data.camExtZoom)
+    -- print('weaponState', data.weaponState)
+    -- print('aspectRatio', data.aspectRatio)
+    -- print('sampev++++++++++++++++++')
 
-            local playerAimData = {
-                aspectRatio = data.aspectRatio,
-                playerId = playerId,
-                realAspectHit = hit,
-                realAspect = realAspect,
-            }
 
-            if cfg.options.debug and (cfg.options.debugNeed3dtext) then
-                playersAimData[nick] = playerAimData
+    if cfg.options.debug then
+        if sampIsPlayerConnected(playerId) then
+            local res = sampGetCharHandleBySampPlayerId(playerId)
+            if res then
+                local nick = sampGetPlayerNickname(playerId)
+                local hit, realAspect = getRealAspectRatioByWeirdValue(data.aspectRatio)
+
+                local playerAimData = {
+                    aspectRatio = data.aspectRatio,
+                    playerId = playerId,
+                    realAspectHit = hit,
+                    clock = os.clock(),
+                    realAspect = realAspect,
+                }
+
+                if (cfg.options.debugNeedTracer or cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig or cfg.options.debugNeed3dtext) then
+                    playersAimData[nick] = playerAimData
+                end
             end
         end
+    end
+end
+
+function sampev.onSendAimSync(data)
+    if cfg.options.debug and cfg.options.debugNeedRender then
+        local hit, realAspect = getRealAspectRatioByWeirdValue(data.aspectRatio)
+
+        playerPedAimData = {
+            aspectRatio = data.aspectRatio,
+            realAspectHit = hit,
+            realAspect = realAspect,
+            clock = os.clock(),
+            type = 'local'
+        }
     end
 end
 
 function sampev.onPlayerStreamOut(playerId)
     if phoneObjects[playerId] ~= nil then
         if sampIsPlayerConnected(data.playerId) then
-            if sampGetPlayerNickname(data.playerId) == nick then
-                phoneObjects[playerId] = nil
-            end
+            phoneObjects[sampGetPlayerNickname(data.playerId)] = nil
         end
     end
 end
@@ -455,14 +625,37 @@ function drawDebugLine(ax, ay, az, bx, by, bz, color1, color2, color3)
     end
 end
 
+function sampGetPlayerIdByNickname(nick)
+    local _, myid = sampGetPlayerIdByCharHandle(playerPed)
+    if tostring(nick) == sampGetPlayerNickname(myid) then
+        return myid
+    end
+    for i = 0, 1000 do
+        if sampIsPlayerConnected(i) and sampGetPlayerNickname(i) == tostring(nick) then
+            return i
+        end
+    end
+    return nil
+end
+
+function cleanup()
+    for k, v in pairs(phoneObjects) do
+        local id = sampGetPlayerIdByNickname(k)
+        if id then
+            delObject(id, OBJECT_SLOT_REPLACE_IFNEEDED)
+        end
+    end
+    phoneObjects = {}
+
+    for k, v in pairs(debug3dText) do
+        sampDestroy3dText(v.sampTextId)
+    end
+    debug3dText = {}
+end
+
 -- cleanup
 function onScriptTerminate(LuaScript, quitGame)
-    for k, v in pairs(phoneObjects) do
-        delObject(k, OBJECT_SLOT_REPLACE_IFNEEDED)
-    end
-    for k, v in pairs(debug3dText) do
-        sampDestroy3dText(v)
-    end
+    cleanup()
 end
 
 -- menu
@@ -473,7 +666,7 @@ function createSimpleToggle(group, setting, text)
         onclick = function()
             cfg[group][setting] = not cfg[group][setting]
             saveCfg()
-            thisScript():reload()
+            requestToReload = true
         end
     }
 end
@@ -486,7 +679,7 @@ function updateMenu()
                 sampShowDialog(
                     0,
                     "{7ef3fa}/wraith-xiaomi v." .. thisScript().version,
-                    "{ffffff}Proof-Of-Concept определения приблизительного соотношения сторон через aimSync.\n\nОпределяет необычные соотношения как мобильных игроков и рисует им телефон.",
+                    "{ffffff}Proof-Of-Concept определения приблизительного соотношения сторон через aimSync.\n\nЦель скрипта - отладка сниппета определения соотношения сторон и реализации Proof-Of-Value.\n\nОпределяет необычные соотношения как мобильных игроков и рисует им телефон.\n\nМобильные игроки не представляют серьёзной угрозы во внутриигровых перестрелках",
                     "Окей"
                 )
             end
@@ -516,7 +709,14 @@ function updateMenu()
         },
         createSimpleToggle("options", "debugNeed3dtext", "Включить 3д текст: "),
         createSimpleToggle("options", "debug3dTextOnlyMobile", "Только добавлять ~игрокам с телефонов: "),
-        createSimpleToggle("options", "debug3DTextMore", "Более подробно в 3д текст: ")
+        createSimpleToggle("options", "debug3DTextMore", "Более подробно в 3д текст: "),
+        {
+            title = " "
+        },
+        {
+            title = '{AAAAAA}Дебаг'
+        },
+        createSimpleToggle("options", "debugNeedRender", "Рендерить своё соотношение сторон: ")
     }
 end
 
