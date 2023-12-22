@@ -6,7 +6,7 @@ script_description(
     "POC of aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
 -- made for https://www.blast.hk/threads/193650/
 script_url("https://github.com/qrlk/wraith-xiaomi")
-script_version("22.12.2023-rc1")
+script_version("22.12.2023-rc2")
 
 -- https://github.com/qrlk/qrlk.lua.moonloader
 local enable_sentry = true -- false to disable error reports to sentry.io
@@ -50,6 +50,7 @@ end
 --- start
 local inicfg = require "inicfg"
 local sampev = require "lib.samp.events"
+local aspectRatioKey = sampev.MODULEINFO.version >= 3 and 'aspectRatio' or 'unknown'
 
 local tempThreads = {}
 local mod_submenus_sa = {}
@@ -231,7 +232,6 @@ function getClosestAspectRatio(targetWidth, targetHeight)
 
     return closestAspectRatio[1], closestAspectRatio[2]
 end
-
 
 function openLink(link)
     local ffi = require "ffi"
@@ -585,10 +585,10 @@ function sampev.onAimSync(playerId, data)
             local res = sampGetCharHandleBySampPlayerId(playerId)
             if res then
                 local nick = sampGetPlayerNickname(playerId)
-                local hit, realAspect = getRealAspectRatioByWeirdValue(data.aspectRatio)
+                local hit, realAspect = getRealAspectRatioByWeirdValue(data[aspectRatioKey])
 
                 local playerAimData = {
-                    aspectRatio = data.aspectRatio,
+                    aspectRatio = data[aspectRatioKey],
                     playerId = playerId,
                     realAspectHit = hit,
                     clock = os.clock(),
@@ -605,10 +605,10 @@ end
 
 function sampev.onSendAimSync(data)
     if cfg.options.debug and cfg.options.debugNeedRender then
-        local hit, realAspect = getRealAspectRatioByWeirdValue(data.aspectRatio)
+        local hit, realAspect = getRealAspectRatioByWeirdValue(data[aspectRatioKey])
 
         playerPedAimData = {
-            aspectRatio = data.aspectRatio,
+            aspectRatio = data[aspectRatioKey],
             realAspectHit = hit,
             realAspect = realAspect,
             clock = os.clock(),
