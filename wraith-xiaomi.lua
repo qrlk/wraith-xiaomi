@@ -6,7 +6,7 @@ script_description(
     "POC of aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
 -- made for https://www.blast.hk/threads/193650/
 script_url("https://github.com/qrlk/wraith-xiaomi")
-script_version("21.12.2023-dev1")
+script_version("22.12.2023-rc1")
 
 -- https://github.com/qrlk/qrlk.lua.moonloader
 local enable_sentry = true -- false to disable error reports to sentry.io
@@ -65,7 +65,7 @@ local cfg =
                 debugNeedRender = false,
                 debugNeedPhoneSmall = false,
                 debugNeedPhoneBig = true,
-                debug3dTextOnlyMobile = true,
+                debug3dTextOnlyMobile = false,
                 debug3DTextMore = false,
             }
         },
@@ -232,7 +232,8 @@ function getClosestAspectRatio(targetWidth, targetHeight)
     return closestAspectRatio[1], closestAspectRatio[2]
 end
 
-function checkWraith()
+
+function openLink(link)
     local ffi = require "ffi"
     ffi.cdef [[
                 void* __stdcall ShellExecuteA(void* hwnd, const char* op, const char* file, const char* params, const char* dir, int show_cmd);
@@ -241,8 +242,16 @@ function checkWraith()
     local shell32 = ffi.load "Shell32"
     local ole32 = ffi.load "Ole32"
     ole32.CoInitializeEx(nil, 2 + 4) -- COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE
-    sampAddChatMessage("Пытаемся открыть: https://www.blast.hk/threads/198111/", -1)
-    print(shell32.ShellExecuteA(nil, "open", "https://www.blast.hk/threads/198111/", nil, nil, 1))
+    sampAddChatMessage("Пытаемся открыть в браузере, сверните игру: " .. link, -1)
+    print(shell32.ShellExecuteA(nil, "open", link, nil, nil, 1))
+end
+
+function checkWraith()
+    openLink('https://www.blast.hk/threads/198111/')
+end
+
+function checkWraithAimline()
+    openLink('https://github.com/qrlk/wraith-aimline')
 end
 
 function callMenu(id, pos, title)
@@ -680,7 +689,7 @@ function updateMenu()
                 sampShowDialog(
                     0,
                     "{7ef3fa}/wraith-xiaomi v." .. thisScript().version,
-                    "{ffffff}Proof-Of-Concept определения приблизительного соотношения сторон через aimSync.\n\nЦель скрипта - отладка сниппета определения соотношения сторон и реализации Proof-Of-Value.\n\nОпределяет необычные соотношения как мобильных игроков и рисует им телефон.\n\nМобильные игроки не представляют серьёзной угрозы во внутриигровых перестрелках",
+                    "{ffffff}Proof-Of-Concept определения приблизительного соотношения сторон через aimSync.\n\nЦель скрипта - отладка сниппета определения соотношения сторон и реализация Proof-Of-Value.\n\nОпределяет необычные соотношения как мобильных игроков и рисует им телефон.\n\nМобильные игроки не представляют серьёзной угрозы во внутриигровых перестрелках, потому что у них лапки и по ним проходит х2 урон.",
                     "Окей"
                 )
             end
@@ -689,6 +698,12 @@ function updateMenu()
             title = "Открыть скрипт, из которого была вырезана эта функция",
             onclick = checkWraith
         },
+
+        {
+            title = "Открыть скрипт, который рендерит линии прицела исходя из aspectRatio",
+            onclick = checkWraithAimline
+        },
+
         {
             title = " "
         },
@@ -717,7 +732,7 @@ function updateMenu()
         {
             title = '{AAAAAA}Дебаг'
         },
-        createSimpleToggle("options", "debugNeedRender", "Рендерить своё соотношение сторон: ")
+        createSimpleToggle("options", "debugNeedRender", "Рендерить соотношение сторон [своё или /wr id]: ")
     }
 end
 
@@ -733,6 +748,7 @@ function submenus_show(menu, caption, select_button, close_button, back_button, 
         for i, v in ipairs(menu) do
             table.insert(string_list, type(v.submenu) == "table" and v.title .. "  >>" or v.title)
         end
+        wait(100)
         if not start then
             sampShowDialog(
                 id,
@@ -760,7 +776,6 @@ function submenus_show(menu, caption, select_button, close_button, back_button, 
             if start then
                 result, button, list = true, 1, start - 1
             end
-            wait(200)
             if result then
                 if button == 1 and list ~= -1 then
                     local item = menu[list + 1]
