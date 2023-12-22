@@ -435,6 +435,7 @@ function main()
                             if cfg.options.debugNeedPhoneSmall or cfg.options.debugNeedPhoneBig then
                                 if phoneObjects[nick] ~= nil and phoneObjects[nick].aspectRatio ~= data.aspectRatio then
                                     delObject(data.playerId, OBJECT_SLOT_REPLACE_IFNEEDED)
+                                    phoneObjects[nick] = nil
                                 end
 
                                 if data.realAspect == MOBILE_ASPECT and phoneObjects[nick] == nil then
