@@ -6,7 +6,7 @@ script_description(
     "POC of aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
 -- made for https://www.blast.hk/threads/193650/
 script_url("https://github.com/qrlk/wraith-xiaomi")
-script_version("22.12.2023-rc2")
+script_version("23.12.2023-rc3")
 
 -- https://github.com/qrlk/qrlk.lua.moonloader
 local enable_sentry = true -- false to disable error reports to sentry.io
@@ -354,14 +354,16 @@ function main()
     function selectPlayerForDebugRender(id)
         if id == "" then
             CHECK_NICK = false
+            sampAddChatMessage('/wraith-xioami || CHECK_NICK: none ', -1)
         else
             if sampIsPlayerConnected(id) then
                 CHECK_NICK = sampGetPlayerNickname(id)
+                sampAddChatMessage('/wraith-xiaomi || CHECK_NICK: ' .. CHECK_NICK, -1)
             end
         end
     end
 
-    sampRegisterChatCommand("wr", selectPlayerForDebugRender)
+    sampRegisterChatCommand("wrx", selectPlayerForDebugRender)
 
     while true do
         wait(0)
@@ -373,26 +375,34 @@ function main()
             if cfg.options.debugNeedRender and (playerPedAimData or CHECK_NICK) then
                 if CHECK_NICK then
                     if playersAimData[CHECK_NICK] then
-                        local n1 = '?'
+                        if sampIsPlayerConnected(playersAimData[CHECK_NICK].playerId) and sampGetPlayerNickname(playersAimData[CHECK_NICK].playerId) == CHECK_NICK then
+                            local n1 = '?'
 
-                        if playersAimData[CHECK_NICK].realAspect ~= "unknown" then
-                            local p1, p2 = playersAimData[CHECK_NICK].realAspect:match("(%d+):(%d+)")
-                            n1 = string.format("%.2f", p1 / p2)
+                            if playersAimData[CHECK_NICK].realAspect ~= "unknown" then
+                                local p1, p2 = playersAimData[CHECK_NICK].realAspect:match("(%d+):(%d+)")
+                                n1 = string.format("%.2f", p1 / p2)
+                            end
+
+                            renderFontDrawText(my_font,
+                                string.format(
+                                    'NICK: %s[%s] - /wrx [id]\nAIMSYNC: %s (%s / 255 = ~%.2f)\nPREDICTED: %s (%s) || HIT: %s',
+                                    CHECK_NICK,
+                                    sampGetPlayerIdByNickname(CHECK_NICK),
+                                    playersAimData[CHECK_NICK].aspectRatio,
+                                    playersAimData[CHECK_NICK].aspectRatio,
+                                    playersAimData[CHECK_NICK].aspectRatio / 255,
+                                    playersAimData[CHECK_NICK].realAspect,
+                                    n1,
+                                    playersAimData[CHECK_NICK].realAspectHit), 50, 400, 0xFFFFFFFF)
+                        else
+                            CHECK_NICK = false
+                            sampAddChatMessage('/wraith-xiaomi || CHECK_NICK: none ', -1)
                         end
-
-                        renderFontDrawText(my_font,
-                            string.format(
-                                'NICK: %s[%s] - /wr [id]\nAIMSYNC: %s (%s / 255 = ~%.2f)\nPREDICTED: %s (%s) || HIT: %s',
-                                CHECK_NICK,
-                                sampGetPlayerIdByNickname(CHECK_NICK),
-                                playersAimData[CHECK_NICK].aspectRatio,
-                                playersAimData[CHECK_NICK].aspectRatio,
-                                playersAimData[CHECK_NICK].aspectRatio / 255,
-                                playersAimData[CHECK_NICK].realAspect,
-                                n1,
-                                playersAimData[CHECK_NICK].realAspectHit), 50, 400, 0xFFFFFFFF)
                     else
-                        CHECK_NICK = false
+                        renderFontDrawText(my_font,
+                                string.format(
+                                    'NICK: %s || STATUS: NO_DATA || /wrx [id]',
+                                    CHECK_NICK), 50, 400, 0xFFFFFFFF)
                     end
                 else
                     local resX, resY = getScreenResolution()
@@ -409,7 +419,7 @@ function main()
 
                     renderFontDrawText(my_font,
                         string.format(
-                            'W: %s || H: %s || REAL: %.2f\nAIMSYNC: %s (%s / 255 = ~%.2f)\nPREDICTED: %s (%s) || CLOSEST: %s:%s (%.2f) || HIT: %s',
+                            'W: %s || H: %s || REAL: %.2f - /wrx [id]\nAIMSYNC: %s (%s / 255 = ~%.2f)\nPREDICTED: %s (%s) || CLOSEST: %s:%s (%.2f) || HIT: %s',
                             resX,
                             resY,
                             resX / resY,
@@ -625,6 +635,13 @@ function sampev.onPlayerStreamOut(playerId)
     end
 end
 
+function sampev.onPlayerQuit(id)
+    if CHECK_NICK and CHECK_NICK == sampGetPlayerNickname(id) then
+        CHECK_NICK = false
+        sampAddChatMessage('/wraith-xiaomi || CHECK_NICK: none ', -1)
+    end
+end
+
 function drawDebugLine(ax, ay, az, bx, by, bz, color1, color2, color3)
     local _1, x1, y1, z1 = convert3DCoordsToScreenEx(ax, ay, az)
     local _2, x2, y2, z2 = convert3DCoordsToScreenEx(bx, by, bz)
@@ -708,6 +725,13 @@ function updateMenu()
             title = " "
         },
         createSimpleToggle("options", "debug", "Скрипт работает: "),
+        createSimpleToggle("options", "debugNeedRender", "Рендерить дебаг данные [свои или /wrx id]: "),
+        {
+            title = " "
+        },
+        {
+            title = '{AAAAAA}Трасер'
+        },
         createSimpleToggle("options", "debugNeedTracer", "Трасер до мобильных игроков: "),
         {
             title = " "
@@ -726,13 +750,6 @@ function updateMenu()
         createSimpleToggle("options", "debugNeed3dtext", "Включить 3д текст: "),
         createSimpleToggle("options", "debug3dTextOnlyMobile", "Только добавлять ~игрокам с телефонов: "),
         createSimpleToggle("options", "debug3DTextMore", "Более подробно в 3д текст: "),
-        {
-            title = " "
-        },
-        {
-            title = '{AAAAAA}Дебаг'
-        },
-        createSimpleToggle("options", "debugNeedRender", "Рендерить соотношение сторон [своё или /wr id]: ")
     }
 end
 
