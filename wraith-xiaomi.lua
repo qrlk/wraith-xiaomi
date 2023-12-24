@@ -251,7 +251,7 @@ function checkWraith()
 end
 
 function checkWraithAimline()
-    openLink('https://github.com/qrlk/wraith-aimline')
+    openLink('https://www.blast.hk/threads/198312/')
 end
 
 function callMenu(id, pos, title)
