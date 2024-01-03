@@ -430,7 +430,7 @@ function main()
                 end
             end
 
-            if os.clock() - 1 > lastChecked then
+            if os.clock() - 4 > lastChecked then
                 needToCheck = true
             end
 
