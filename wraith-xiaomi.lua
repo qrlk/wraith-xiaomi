@@ -254,10 +254,9 @@ function checkWraithAimline()
     openLink('https://www.blast.hk/threads/198312/')
 end
 
-function callMenu(id, pos, title)
-    while sampIsDialogActive() do
-        wait(0)
-    end
+function callMenu(pos)
+    sampShowDialog(0)
+    sampCloseCurrentDialogWithButton(0)
     updateMenu()
     submenus_show(
         mod_submenus_sa,
@@ -265,8 +264,6 @@ function callMenu(id, pos, title)
         "Выбрать",
         "Закрыть",
         "Назад",
-        callMenu,
-        id,
         pos
     )
 end
@@ -689,10 +686,12 @@ end
 
 function createSimpleToggle(group, setting, text)
     return {
-        title = text .. tostring(cfg[group][setting]),
-        onclick = function()
+        title = text .. ": " .. tostring(cfg[group][setting]),
+        onclick = function(menu, row)
             cfg[group][setting] = not cfg[group][setting]
             saveCfg()
+            menu[row].title = text .. ": " .. tostring(cfg[group][setting])
+
             requestToReload = true
         end
     }
@@ -706,9 +705,13 @@ function updateMenu()
                 sampShowDialog(
                     0,
                     "{7ef3fa}/wraith-xiaomi v." .. thisScript().version,
-                    "{ffffff}Proof-Of-Concept определения приблизительного соотношения сторон через aimSync.\n\nЦель скрипта - отладка сниппета определения соотношения сторон и реализация Proof-Of-Value.\n\nОпределяет необычные соотношения как мобильных игроков и рисует им телефон.\n\nМобильные игроки не представляют серьёзной угрозы во внутриигровых перестрелках, потому что у них лапки и по ним проходит х2 урон.",
+                    "{ffffff}Proof-Of-Concept определения приблизительного соотношения сторон через aimSync.\n\nЦель скрипта - отладка сниппета определения соотношения сторон и реализация Proof-Of-Value.\n\nОпределяет необычные соотношения как мобильных игроков и рисует им телефон.\n\nМобильные игроки не представляют серьёзной угрозы во внутриигровых перестрелках,\nпотому что у них лапки и по ним проходит х2 урон.",
                     "Окей"
                 )
+                while sampIsDialogActive() do
+                    wait(0)
+                end
+                return true
             end
         },
         {
@@ -724,32 +727,32 @@ function updateMenu()
         {
             title = " "
         },
-        createSimpleToggle("options", "debug", "Скрипт работает: "),
-        createSimpleToggle("options", "debugNeedRender", "Рендерить дебаг данные [свои или /wrx id]: "),
+        createSimpleToggle("options", "debug", "Скрипт работает"),
+        createSimpleToggle("options", "debugNeedRender", "Рендерить дебаг данные [свои или /wrx id]"),
         {
             title = " "
         },
         {
             title = '{AAAAAA}Трасер'
         },
-        createSimpleToggle("options", "debugNeedTracer", "Трасер до мобильных игроков: "),
+        createSimpleToggle("options", "debugNeedTracer", "Трасер до мобильных игроков"),
         {
             title = " "
         },
         {
             title = '{AAAAAA}Объект'
         },
-        createSimpleToggle("options", "debugNeedPhoneSmall", "Добавлять телефон ~мобильным игрокам вместо башки: "),
-        createSimpleToggle("options", "debugNeedPhoneBig", "Добавлять телефон ~мобильным игрокам на тело: "),
+        createSimpleToggle("options", "debugNeedPhoneSmall", "Добавлять телефон ~мобильным игрокам вместо башки"),
+        createSimpleToggle("options", "debugNeedPhoneBig", "Добавлять телефон ~мобильным игрокам на тело"),
         {
             title = " "
         },
         {
             title = '{AAAAAA}3D текст'
         },
-        createSimpleToggle("options", "debugNeed3dtext", "Включить 3д текст: "),
-        createSimpleToggle("options", "debug3dTextOnlyMobile", "Только добавлять ~игрокам с телефонов: "),
-        createSimpleToggle("options", "debug3DTextMore", "Более подробно в 3д текст: "),
+        createSimpleToggle("options", "debugNeed3dtext", "Включить 3д текст"),
+        createSimpleToggle("options", "debug3dTextOnlyMobile", "Только добавлять ~игрокам с телефонов"),
+        createSimpleToggle("options", "debug3DTextMore", "Более подробно в 3д текст"),
     }
 end
 
@@ -757,83 +760,50 @@ end
 --------------------------------------3RD---------------------------------------
 --------------------------------------------------------------------------------
 -- made by FYP, modified by qrlk
-function submenus_show(menu, caption, select_button, close_button, back_button, callback, start, pos)
-    select_button, close_button, back_button = select_button or "Select", close_button or "Close", back_button or "Back"
+function submenus_show(menu, caption, select_button, close_button, back_button, pos)
+    select_button, close_button, back_button = select_button or 'Select', close_button or 'Close',
+        back_button or 'Back'
     prev_menus = {}
-    function display(menu, id, caption, start, pos)
+    function display(menu, id, caption, pos)
         local string_list = {}
         for i, v in ipairs(menu) do
-            table.insert(string_list, type(v.submenu) == "table" and v.title .. "  >>" or v.title)
+            table.insert(string_list, type(v.submenu) == 'table' and v.title .. '  >>' or v.title)
         end
-        wait(100)
-        if not start then
-            sampShowDialog(
-                id,
-                caption,
-                table.concat(string_list, "\n"),
-                select_button,
-                (#prev_menus > 0) and back_button or close_button,
-                4
-            )
-            if pos then
-                sampSetCurrentDialogListItem(pos)
-                if pos > 20 then
-                    setVirtualKeyDown(40, true)
-                    setVirtualKeyDown(40, false)
-                    setVirtualKeyDown(38, true)
-                    setVirtualKeyDown(38, false)
-                end
+        sampShowDialog(id, caption, table.concat(string_list, '\n'), select_button,
+            (#prev_menus > 0) and back_button or close_button, 4)
+        if pos then
+            sampSetCurrentDialogListItem(pos)
+            if pos > 20 then
+                setVirtualKeyDown(40, true)
+                setVirtualKeyDown(40, false)
+                setVirtualKeyDown(38, true)
+                setVirtualKeyDown(38, false)
             end
-            pos = nil
         end
-
         repeat
             wait(0)
             local result, button, list = sampHasDialogRespond(id)
-            if start then
-                result, button, list = true, 1, start - 1
-            end
             if result then
                 if button == 1 and list ~= -1 then
                     local item = menu[list + 1]
-                    if type(item.submenu) == "table" then
-                        -- submenu
-                        table.insert(
-                            prev_menus,
-                            {
-                                menu = menu,
-                                caption = caption,
-                                id = list + 1
-                            }
-                        )
-                        if type(item.onclick) == "function" then
+                    if type(item.submenu) == 'table' then -- submenu
+                        table.insert(prev_menus, { menu = menu, caption = caption, pos = list })
+                        if type(item.onclick) == 'function' then
                             item.onclick(menu, list + 1, item.submenu)
                         end
-                        return display(
-                            item.submenu,
-                            id + 1,
-                            item.submenu.title and item.submenu.title or item.title,
-                            nil,
-                            pos
-                        )
-                    elseif type(item.onclick) == "function" then
+                        return display(item.submenu, id + 1, item.submenu.title and item.submenu.title or item.title)
+                    elseif type(item.onclick) == 'function' then
                         local result = item.onclick(menu, list + 1)
-                        if not result then
-                            if prev_menus and prev_menus[#prev_menus] and prev_menus[#prev_menus].id then
-                                if callback then
-                                    callback(prev_menus[#prev_menus].id, list, item.title)
-                                end
-                            end
-                            return result
-                        end
-                        return display(menu, id, caption)
+                        if not result then return result end
+                        return display(menu, id, caption, list)
+                    else
+                        return display(menu, id, caption, list)
                     end
-                else
-                    -- if button == 0
+                else -- if button == 0
                     if #prev_menus > 0 then
                         local prev_menu = prev_menus[#prev_menus]
                         prev_menus[#prev_menus] = nil
-                        return display(prev_menu.menu, id - 1, prev_menu.caption, nil, prev_menu.id - 1)
+                        return display(prev_menu.menu, id - 1, prev_menu.caption, prev_menu.pos)
                     end
                     return false
                 end
@@ -841,5 +811,5 @@ function submenus_show(menu, caption, select_button, close_button, back_button, 
         until result
     end
 
-    return display(menu, 31337, caption or menu.title, start, pos)
+    return display(menu, 31337, caption or menu.title, pos)
 end
