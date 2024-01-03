@@ -68,6 +68,7 @@ local cfg =
                 debugNeedPhoneBig = true,
                 debug3dTextOnlyMobile = false,
                 debug3DTextMore = false,
+                smartTracer = false,
             }
         },
         "wraith-xiaomi"
@@ -642,11 +643,75 @@ end
 function drawDebugLine(ax, ay, az, bx, by, bz, color1, color2, color3)
     local _1, x1, y1, z1 = convert3DCoordsToScreenEx(ax, ay, az)
     local _2, x2, y2, z2 = convert3DCoordsToScreenEx(bx, by, bz)
-    if _1 and _2 and z1 > 0 and z2 > 0 then
-        renderDrawPolygon(x1, y1, 10, 10, 10, 0.0, color1)
-        renderDrawLine(x1, y1, x2, y2, 2, color2)
-        renderDrawPolygon(x2, y2, 10, 10, 10, 0.0, color3)
+    if _1 and _2 and z1 > 0 then
+        if z2 > 0 then
+            renderDrawPolygon(x1, y1, 10, 10, 10, 0.0, color1)
+            renderDrawLine(x1, y1, x2, y2, 2, color2)
+            renderDrawPolygon(x2, y2, 10, 10, 10, 0.0, color3)
+        elseif cfg.options.smartTracer then
+            local line = Line.new({ ax, ay, az }, { bx, by, bz })
+            local lastPointOnScreen = line:getLastPointOnScreen()
+            if lastPointOnScreen then
+                renderDrawPolygon(x1, y1, 10, 10, 10, 0.0, color1)
+
+                local _2, x2, y2, z2 = convert3DCoordsToScreenEx(lastPointOnScreen[1], lastPointOnScreen[2],
+                    lastPointOnScreen[3])
+                if z2 > 0 then
+                    renderDrawLine(x1, y1, x2, y2, 2, color2)
+                    renderDrawPolygon(x2, y2, 10, 10, 10, 0.0, color3)
+                end
+            end
+        end
     end
+end
+
+
+Line = {}
+Line.__index = Line
+
+function Line.new(p1, p2)
+    local self = setmetatable({}, Line)
+    self.p1 = p1
+    self.p2 = p2
+    self.dx = p2[1] - p1[1]
+    self.dy = p2[2] - p1[2]
+    self.dz = p2[3] - p1[3]
+    self.magnitude = math.sqrt(self.dx * self.dx + self.dy * self.dy + self.dz * self.dz)
+    self.nx = self.dx / self.magnitude
+    self.ny = self.dy / self.magnitude
+    self.nz = self.dz / self.magnitude
+    return self
+end
+
+function Line:getPointAtDistance(distance)
+    local dx = self.nx * distance
+    local dy = self.ny * distance
+    local dz = self.nz * distance
+    return { self.p1[1] + dx, self.p1[2] + dy, self.p1[3] + dz }
+end
+
+function Line:getLastPointOnScreen()
+    -- Calculate the number of points to check
+
+    local numPoints = math.ceil(self.magnitude / 0.1)
+    local lastPoint = false
+    -- Iterate over the points
+    for i = 0, numPoints do
+        -- Get the point at the current distance along the line
+        local d = i * 0.1
+        if d < self.magnitude then
+            local point = self:getPointAtDistance(d)
+
+            if isPointOnScreen(point[1], point[2], point[3], 0.1) then
+                lastPoint = point
+            else
+                return lastPoint
+            end
+        end
+    end
+
+    -- No point was found inside the cube
+    return false
 end
 
 function sampGetPlayerIdByNickname(nick)
@@ -736,6 +801,7 @@ function updateMenu()
             title = '{AAAAAA}Трасер'
         },
         createSimpleToggle("options", "debugNeedTracer", "Трасер до мобильных игроков"),
+        createSimpleToggle("options", "smartTracer", "Просчитывать трасер вне экрана"),
         {
             title = " "
         },
