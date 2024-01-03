@@ -61,6 +61,7 @@ local cfg =
             options = {
                 welcomeMessage = true,
                 debug = true,
+                onlyzero = true,
                 debugNeed3dtext = true,
                 debugNeedTracer = true,
                 debugNeedRender = false,
@@ -398,9 +399,9 @@ function main()
                         end
                     else
                         renderFontDrawText(my_font,
-                                string.format(
-                                    'NICK: %s || STATUS: NO_DATA || /wrx [id]',
-                                    CHECK_NICK), 50, 400, 0xFFFFFFFF)
+                            string.format(
+                                'NICK: %s || STATUS: NO_DATA || /wrx [id]',
+                                CHECK_NICK), 50, 400, 0xFFFFFFFF)
                     end
                 else
                     local resX, resY = getScreenResolution()
@@ -439,7 +440,7 @@ function main()
                 if sampIsPlayerConnected(data.playerId) then
                     local result, ped = sampGetCharHandleBySampPlayerId(data.playerId)
                     if result and sampGetPlayerNickname(data.playerId) == nick then
-                        if data.realAspect == MOBILE_ASPECT then
+                        if (cfg.options.onlyzero and data.aspectRatio == 0 or (not cfg.options.onlyzero and data.realAspect == MOBILE_ASPECT)) then
                             if (cfg.options.debugNeedTracer) then
                                 local x, y, z = getCharCoordinates(playerPed)
                                 local mX, mY, mZ = getCharCoordinates(ped)
@@ -455,7 +456,7 @@ function main()
                                     phoneObjects[nick] = nil
                                 end
 
-                                if data.realAspect == MOBILE_ASPECT and phoneObjects[nick] == nil then
+                                if (cfg.options.onlyzero and data.aspectRatio == 0 or (not cfg.options.onlyzero and data.realAspect == MOBILE_ASPECT)) and phoneObjects[nick] == nil then
                                     if cfg.options.debugNeedPhoneBig then
                                         addRandomObject(data.playerId, 2, phone_models, 1, 0, -0.4, -0.25, -90, 0, -90,
                                             10, 10, 20)
@@ -474,7 +475,7 @@ function main()
                                 end
 
                                 if debug3dText[nick] == nil then
-                                    if not cfg.options.debug3DTextMore and cfg.options.debug3dTextOnlyMobile and data.realAspect == MOBILE_ASPECT then
+                                    if not cfg.options.debug3DTextMore and cfg.options.debug3dTextOnlyMobile and (cfg.options.onlyzero and data.aspectRatio == 0 or (not cfg.options.onlyzero and data.realAspect == MOBILE_ASPECT)) then
                                         debug3dText[nick] = {
                                             aspectRatio = data.aspectRatio,
                                             time = os.clock(),
@@ -482,7 +483,7 @@ function main()
                                                 DEBUG_3D_TEXT_DISTANCE, false, data.playerId, -1)
                                         }
                                     else
-                                        if data.realAspect == MOBILE_ASPECT or not cfg.options.debug3dTextOnlyMobile then
+                                        if (cfg.options.onlyzero and data.aspectRatio == 0 or (not cfg.options.onlyzero and data.realAspect == MOBILE_ASPECT)) or not cfg.options.debug3dTextOnlyMobile then
                                             local text = ""
 
                                             if cfg.options.debug3DTextMore then
@@ -492,7 +493,8 @@ function main()
                                                     data.realAspectHit,
                                                     os.clock() - data.clock)
                                             else
-                                                text = data.realAspect == MOBILE_ASPECT and "mobile?" or data.realAspect
+                                                text = (cfg.options.onlyzero and data.aspectRatio == 0 or (not cfg.options.onlyzero and data.realAspect == MOBILE_ASPECT)) and
+                                                "mobile?" or data.realAspect
                                             end
 
 
@@ -665,7 +667,6 @@ function drawDebugLine(ax, ay, az, bx, by, bz, color1, color2, color3)
     end
 end
 
-
 Line = {}
 Line.__index = Line
 
@@ -794,6 +795,7 @@ function updateMenu()
         },
         createSimpleToggle("options", "debug", "Скрипт работает"),
         createSimpleToggle("options", "debugNeedRender", "Рендерить дебаг данные [свои или /wrx id]"),
+        createSimpleToggle("options", "onlyzero", "Определять как мобильных только если 0"),
         {
             title = " "
         },
