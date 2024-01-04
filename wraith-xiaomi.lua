@@ -549,7 +549,7 @@ function main()
     end
 end
 
-function onReceivePacket(id, bitStream)
+-- function onReceivePacket(id, bitStream)
     -- Parameters: UINT8 Packet_ID, UINT8 cam_mode, float cam_front_vec_x, float cam_front_vec_y, float cam_front_vec_z, float cam_pos_x, float cam_pos_y, float cam_pos_z, float aim_z, 2_BITS weapon_state, 6_BITS cam_zoom, UINT8 aspect_ratio
     -- if id == 203 then
     --     print('----')
@@ -570,7 +570,7 @@ function onReceivePacket(id, bitStream)
     --     print('unread', raknetBitStreamGetNumberOfUnreadBits(bitStream))
     --     print('----')
     -- end
-end
+-- end
 
 -- sampev
 function sampev.onAimSync(playerId, data)
