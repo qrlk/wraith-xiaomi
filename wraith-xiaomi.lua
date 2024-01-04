@@ -6,7 +6,7 @@ script_description(
     "POC of aspectRatio detection from https://github.com/qrlk/wraith.lua. POV: detects mobile players (or players with weird aspect ratio).")
 -- made for https://www.blast.hk/threads/193650/
 script_url("https://github.com/qrlk/wraith-xiaomi")
-script_version("23.12.2023-rc3")
+script_version("05.01.2024-rc4")
 
 -- https://github.com/qrlk/qrlk.lua.moonloader
 local enable_sentry = true -- false to disable error reports to sentry.io
