@@ -69,7 +69,7 @@ local cfg =
                 debugNeedPhoneBig = true,
                 debug3dTextOnlyMobile = false,
                 debug3DTextMore = false,
-                smartTracer = false,
+                smartTracer = true,
             }
         },
         "wraith-xiaomi"
@@ -660,7 +660,7 @@ function drawDebugLine(ax, ay, az, bx, by, bz, color1, color2, color3)
                     lastPointOnScreen[3])
                 if z2 > 0 then
                     renderDrawLine(x1, y1, x2, y2, 2, color2)
-                    renderDrawPolygon(x2, y2, 10, 10, 10, 0.0, color3)
+                    -- renderDrawPolygon(x2, y2, 10, 10, 10, 0.0, color3)
                 end
             end
         end
